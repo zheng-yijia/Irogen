@@ -50,6 +50,32 @@ jobs:
           pnpm add @tauri-apps/api@latest @tauri-apps/plugin-http@latest @tauri-apps/plugin-updater@latest @tauri-apps/plugin-notification@latest --save-exact
           echo "✅ 依赖更新完成"
 
+      - name: Fix library name in Cargo.toml and Xcode project
+        run: |
+          echo "🔧 正在统一库名称..."
+          # 1. 从 Cargo.toml 提取库名称
+          CARGO_LIB_NAME=$(grep -A5 '^\[lib\]' Cargo.toml | grep 'name' | head -1 | sed 's/.*= *"//;s/".*//')
+          if [ -z "$CARGO_LIB_NAME" ]; then
+            echo "⚠️ 未在 Cargo.toml 中找到 [lib] name，使用默认值"
+            CARGO_LIB_NAME="app"
+          fi
+          echo "📦 Cargo 库名称: $CARGO_LIB_NAME"
+          
+          # 2. 在 Xcode 工程中查找并替换库名称
+          PBXPROJ_PATH=$(find . -name "project.pbxproj" | head -1)
+          if [ -n "$PBXPROJ_PATH" ]; then
+            # 将 Xcode 工程中所有出现的 "libapp.a" 或 "app" 库引用替换为实际名称
+            sed -i '' "s/libapp\.a/lib${CARGO_LIB_NAME}.a/g" "$PBXPROJ_PATH"
+            sed -i '' "s/libapp/lib${CARGO_LIB_NAME}/g" "$PBXPROJ_PATH"
+            echo "✅ Xcode 工程库名称已更新为: lib${CARGO_LIB_NAME}.a"
+          fi
+          
+          # 3. 确保 Cargo.toml 中的 crate-type 包含 staticlib
+          if ! grep -q 'crate-type' Cargo.toml; then
+            echo 'crate-type = ["staticlib", "cdylib", "rlib"]' >> Cargo.toml
+            echo "✅ 已添加 crate-type = [\"staticlib\", ...]"
+          fi
+
       - name: Disable code signing
         run: |
           PBXPROJ_PATH=$(find . -name "project.pbxproj" | head -1)
@@ -67,9 +93,8 @@ jobs:
           sed -i '' 's/CODE_SIGNING_REQUIRED = YES;/CODE_SIGNING_REQUIRED = NO;/g' "$PBXPROJ_PATH"
           echo "✅ 代码签名设置已修改"
 
-      - name: Build iOS app (unsigned)
+      - name: Build iOS app
         run: |
-          # 关键：使用 --no-sign 参数，并传递 CODE_SIGNING_ALLOWED=NO 给 xcodebuild
           tauri ios build --ci --no-sign --ignore-version-mismatches -- -- CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO 2>&1 | tee build.log || true
 
           APP_PATH=$(find . -path "*/Products/Applications/*.app" -type d | head -1)

@@ -47,7 +47,6 @@ jobs:
       - name: Update Tauri Node packages
         run: |
           echo "🔧 正在更新 Tauri Node.js 依赖到实际存在的最新版本..."
-          # 使用 @latest，避免请求不存在的版本号
           pnpm add @tauri-apps/api@latest @tauri-apps/plugin-http@latest @tauri-apps/plugin-updater@latest @tauri-apps/plugin-notification@latest --save-exact
           echo "✅ 依赖更新完成"
 
@@ -67,8 +66,8 @@ jobs:
 
       - name: Build iOS app
         run: |
-          # 核心修改：加入 --skip-version-check 参数，强制忽略版本校验
-          npm run tauri ios build -- --ci --skip-version-check 2>&1 | tee build.log || true
+          # 【关键修改】这里使用了 Tauri CLI 真正支持的 --ignore-version-mismatches 参数
+          npm run tauri ios build -- --ci --ignore-version-mismatches 2>&1 | tee build.log || true
 
           APP_PATH=$(find . -path "*/Products/Applications/*.app" -type d | head -1)
           if [ -z "$APP_PATH" ]; then

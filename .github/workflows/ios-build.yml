@@ -44,6 +44,13 @@ jobs:
           echo "🔍 检查 Tauri 初始化后的目录结构:"
           find . -name "project.pbxproj" || true
 
+      - name: Fix Tauri version mismatches with pnpm
+        run: |
+          echo "🔧 使用 pnpm 强制对齐 Node.js 与 Rust 的 Tauri 版本..."
+          # 根据 Rust Crate 的实际版本（tauri v2.10.3, tauri-plugin-updater v2.10.0）强制安装对应版本的 Node 包
+          pnpm add @tauri-apps/api@2.10.3 @tauri-apps/plugin-updater@2.10.0 --save-exact
+          echo "✅ 版本对齐完成"
+
       - name: Disable code signing
         run: |
           PBXPROJ_PATH=$(find . -name "project.pbxproj" | head -1)
@@ -59,8 +66,6 @@ jobs:
           sed -i '' 's/DEVELOPMENT_TEAM = .*;/DEVELOPMENT_TEAM = "";/g' "$PBXPROJ_PATH"
 
       - name: Build iOS app
-        env:
-          TAURI_SKIP_VERSION_CHECK: "true"  # 关键：跳过 Tauri 版本检查
         run: |
           npm run tauri ios build -- --ci 2>&1 | tee build.log || true
 

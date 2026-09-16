@@ -1,13 +1,13 @@
 name: Build iOS Unsigned IPA
 
 on:
-  workflow_dispatch:  # 手动触发
+  workflow_dispatch:
   push:
     branches: [main, master]
 
 jobs:
   build-ios:
-    runs-on: macos-latest  # 使用免费的 macOS 运行环境
+    runs-on: macos-latest
 
     steps:
       - name: Checkout repository
@@ -20,33 +20,56 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios, x86_64-apple-ios
 
       - name: Install dependencies
         run: |
-          npm install --legacy-peer-deps
+          npm install --legacy-peer-deps || npm install
 
       - name: Build frontend
-        run: npm run build
+        run: |
+          if npm run | grep -q "build"; then
+            npm run build
+          else
+            echo "No build script found, skipping..."
+          fi
 
       - name: Init Tauri iOS project
-        run: npx tauri ios init
+        run: |
+          # 强制使用最新版 Tauri CLI
+          npx @tauri-apps/cli@latest ios init
+          echo "🔍 检查 Tauri 初始化后的目录结构:"
+          ls -la src-tauri/ || true
+          find src-tauri/gen -name "project.pbxproj" || true
 
       - name: Disable code signing
         run: |
-          # 禁用代码签名，确保能在无证书环境下构建
-          sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' src-tauri/gen/apple/*.xcodeproj/project.pbxproj
-          sed -i '' 's/CODE_SIGN_IDENTITY = "Apple Development";/CODE_SIGN_IDENTITY = "";/g' src-tauri/gen/apple/*.xcodeproj/project.pbxproj
-          sed -i '' 's/DEVELOPMENT_TEAM = .*;/DEVELOPMENT_TEAM = "";/g' src-tauri/gen/apple/*.xcodeproj/project.pbxproj
+          # 动态查找 project.pbxproj 文件
+          PBXPROJ_PATH=$(find src-tauri/gen -name "project.pbxproj" | head -1)
+          
+          if [ -z "$PBXPROJ_PATH" ]; then
+            echo "❌ 错误: 找不到 project.pbxproj 文件！"
+            echo "这意味着 'tauri ios init' 可能没有成功生成 iOS 工程。"
+            echo "--- 检查 src-tauri 目录结构 ---"
+            find src-tauri -maxdepth 3 -type d
+            exit 1
+          fi
+          
+          echo "✅ 找到项目文件: $PBXPROJ_PATH"
+          sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' "$PBXPROJ_PATH"
+          sed -i '' 's/CODE_SIGN_IDENTITY = "Apple Development";/CODE_SIGN_IDENTITY = "";/g' "$PBXPROJ_PATH"
+          sed -i '' 's/DEVELOPMENT_TEAM = .*;/DEVELOPMENT_TEAM = "";/g' "$PBXPROJ_PATH"
 
       - name: Build iOS app
         run: |
-          # 构建 .app 文件（预期会因签名失败而退出，但 .app 已生成）
           npm run tauri ios build -- --ci 2>&1 | tee build.log || true
 
-          # 检查 .app 是否生成成功
-          APP_PATH=$(find src-tauri/gen/apple -path "*/Products/Applications/*.app" -type d | head -1)
+          APP_PATH=$(find src-tauri/gen -path "*/Products/Applications/*.app" -type d | head -1)
           if [ -z "$APP_PATH" ]; then
             echo "❌ .app 文件未生成，构建失败"
+            echo "--- 最后 50 行构建日志 ---"
+            tail -50 build.log
             exit 1
           fi
           echo "✅ .app 文件已生成: $APP_PATH"
@@ -54,13 +77,10 @@ jobs:
 
       - name: Package unsigned IPA
         run: |
-          # 手动打包 IPA（标准 IPA 目录结构）
           mkdir -p Payload
           cp -R "$APP_PATH" Payload/
-          # 修正权限
           chmod -R 755 Payload/
           find Payload -type f -exec chmod 644 {} \;
-          # 打包为 IPA
           zip -r -q MyApp-iOS-unsigned.ipa Payload/
           echo "✅ IPA 打包完成"
 

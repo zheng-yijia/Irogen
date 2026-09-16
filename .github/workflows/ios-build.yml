@@ -25,7 +25,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          npm install -g pnpm
+          npm install -g pnpm @tauri-apps/cli
           pnpm install --no-frozen-lockfile || npm install
 
       - name: Build frontend
@@ -40,7 +40,7 @@ jobs:
 
       - name: Init Tauri iOS project
         run: |
-          npx @tauri-apps/cli@latest ios init
+          tauri ios init
           echo "🔍 检查 Tauri 初始化后的目录结构:"
           find . -name "project.pbxproj" || true
 
@@ -60,14 +60,18 @@ jobs:
           fi
           
           echo "✅ 找到项目文件: $PBXPROJ_PATH"
+          # 全局替换，确保 Release 和 Debug 配置都被覆盖
           sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' "$PBXPROJ_PATH"
           sed -i '' 's/CODE_SIGN_IDENTITY = "Apple Development";/CODE_SIGN_IDENTITY = "";/g' "$PBXPROJ_PATH"
           sed -i '' 's/DEVELOPMENT_TEAM = .*;/DEVELOPMENT_TEAM = "";/g' "$PBXPROJ_PATH"
+          sed -i '' 's/CODE_SIGNING_ALLOWED = YES;/CODE_SIGNING_ALLOWED = NO;/g' "$PBXPROJ_PATH"
+          sed -i '' 's/CODE_SIGNING_REQUIRED = YES;/CODE_SIGNING_REQUIRED = NO;/g' "$PBXPROJ_PATH"
+          echo "✅ 代码签名设置已修改"
 
       - name: Build iOS app
         run: |
-          # 【关键修改】这里使用了 Tauri CLI 真正支持的 --ignore-version-mismatches 参数
-          npm run tauri ios build -- --ci --ignore-version-mismatches 2>&1 | tee build.log || true
+          # 【关键修复】通过 `--` 将参数传递给底层的 xcodebuild，强制禁用签名
+          tauri ios build --ci --ignore-version-mismatches -- -- CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO 2>&1 | tee build.log || true
 
           APP_PATH=$(find . -path "*/Products/Applications/*.app" -type d | head -1)
           if [ -z "$APP_PATH" ]; then

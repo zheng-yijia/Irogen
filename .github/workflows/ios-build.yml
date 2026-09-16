@@ -47,8 +47,8 @@ jobs:
       - name: Fix Tauri version mismatches with pnpm
         run: |
           echo "🔧 使用 pnpm 强制对齐 Node.js 与 Rust 的 Tauri 版本..."
-          # 根据 Rust Crate 的实际版本（tauri v2.10.3, tauri-plugin-updater v2.10.0）强制安装对应版本的 Node 包
-          pnpm add @tauri-apps/api@2.10.3 @tauri-apps/plugin-updater@2.10.0 --save-exact
+          # 关键修改：使用 "2.x" 让 pnpm 自动选择最新的 2.x 兼容版本，避免请求不存在的精确版本
+          pnpm add "@tauri-apps/api@2.x" "@tauri-apps/plugin-updater@2.x" "@tauri-apps/plugin-http@2.x" "@tauri-apps/plugin-notification@2.x" --save-exact
           echo "✅ 版本对齐完成"
 
       - name: Disable code signing

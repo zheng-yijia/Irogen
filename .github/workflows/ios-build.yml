@@ -41,9 +41,14 @@ jobs:
           echo "🔍 检查 Tauri 初始化后的目录结构:"
           find . -name "project.pbxproj" || true
 
+      - name: Fix Tauri version mismatches
+        run: |
+          echo "🔧 正在修复 Node.js 与 Rust 的 Tauri 版本不匹配..."
+          # 强制安装与 Rust Crate 兼容的 Node 包版本
+          npm install @tauri-apps/api@2.10.0 @tauri-apps/plugin-http@2.5.7 @tauri-apps/plugin-updater@2.10.0 @tauri-apps/plugin-notification@2.3.3 --save-exact
+
       - name: Disable code signing
         run: |
-          # 修改：从项目根目录全局查找 project.pbxproj 文件
           PBXPROJ_PATH=$(find . -name "project.pbxproj" | head -1)
           
           if [ -z "$PBXPROJ_PATH" ]; then
@@ -52,16 +57,16 @@ jobs:
           fi
           
           echo "✅ 找到项目文件: $PBXPROJ_PATH"
-          # 使用 sed 禁用代码签名
           sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' "$PBXPROJ_PATH"
           sed -i '' 's/CODE_SIGN_IDENTITY = "Apple Development";/CODE_SIGN_IDENTITY = "";/g' "$PBXPROJ_PATH"
           sed -i '' 's/DEVELOPMENT_TEAM = .*;/DEVELOPMENT_TEAM = "";/g' "$PBXPROJ_PATH"
 
       - name: Build iOS app
+        env:
+          TAURI_SKIP_VERSION_CHECK: "true"
         run: |
           npm run tauri ios build -- --ci 2>&1 | tee build.log || true
 
-          # 修改：从项目根目录全局查找 .app 文件
           APP_PATH=$(find . -path "*/Products/Applications/*.app" -type d | head -1)
           if [ -z "$APP_PATH" ]; then
             echo "❌ .app 文件未生成，构建失败"

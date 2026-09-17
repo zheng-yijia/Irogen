@@ -50,28 +50,34 @@ jobs:
           pnpm add @tauri-apps/api@latest @tauri-apps/plugin-http@latest @tauri-apps/plugin-updater@latest @tauri-apps/plugin-notification@latest --save-exact
           echo "✅ 依赖更新完成"
 
-      - name: Fix library name in Xcode project only
+      - name: Fix library name and search paths in Xcode project
         run: |
-          echo "🔧 正在统一 Xcode 工程中的库名称..."
+          echo "🔧 正在统一 Xcode 工程中的库名称和搜索路径..."
           
-          # 1. 从 app/Cargo.toml 提取库名称（如果存在）
+          # 1. 从 app/Cargo.toml 提取库名称
           CARGO_TOML="app/Cargo.toml"
           if [ -f "$CARGO_TOML" ]; then
             CARGO_LIB_NAME=$(grep -A5 '^\[lib\]' "$CARGO_TOML" | grep 'name' | head -1 | sed 's/.*= *"//;s/".*//')
           fi
           
           if [ -z "$CARGO_LIB_NAME" ]; then
-            echo "⚠️ 未在 $CARGO_TOML 中找到 [lib] name，使用默认值 'app'"
-            CARGO_LIB_NAME="app"
+            echo "⚠️ 未找到 [lib] name，使用默认值 'irogen'"
+            CARGO_LIB_NAME="irogen"
           fi
           echo "📦 Cargo 库名称: $CARGO_LIB_NAME"
           
-          # 2. 在 Xcode 工程中查找并替换库名称
+          # 2. 在 Xcode 工程中查找并替换库名称和搜索路径
           PBXPROJ_PATH=$(find . -name "project.pbxproj" | head -1)
           if [ -n "$PBXPROJ_PATH" ]; then
-            # 将 Xcode 工程中所有出现的 "libapp.a" 或 "app" 库引用替换为实际名称
+            # 替换库名称引用
             sed -i '' "s/libapp\.a/lib${CARGO_LIB_NAME}.a/g" "$PBXPROJ_PATH"
             sed -i '' "s/libapp/lib${CARGO_LIB_NAME}/g" "$PBXPROJ_PATH"
+            
+            # 修正 LIBRARY_SEARCH_PATHS，确保指向正确的 Externals 目录
+            # 将 $(PROJECT_DIR)/Externals/arm64/$(CONFIGURATION) 替换为相对于 app 目录的路径
+            sed -i '' "s|\$(PROJECT_DIR)/Externals/arm64/\\\$(CONFIGURATION)|\$(SRCROOT)/Externals/arm64/\$(CONFIGURATION)|g" "$PBXPROJ_PATH"
+            sed -i '' "s|\$(PROJECT_DIR)/Externals/x86_64/\\\$(CONFIGURATION)|\$(SRCROOT)/Externals/x86_64/\$(CONFIGURATION)|g" "$PBXPROJ_PATH"
+            
             echo "✅ Xcode 工程库名称已更新为: lib${CARGO_LIB_NAME}.a"
           else
             echo "❌ 未找到 project.pbxproj 文件"
@@ -97,7 +103,8 @@ jobs:
 
       - name: Build iOS app
         run: |
-          tauri ios build --ci --no-sign --ignore-version-mismatches -- -- CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO 2>&1 | tee build.log || true
+          # 明确指定 target 为 aarch64-apple-ios，确保编译正确的架构
+          tauri ios build --ci --no-sign --ignore-version-mismatches --target aarch64-apple-ios -- -- CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO 2>&1 | tee build.log || true
 
           APP_PATH=$(find . -path "*/Products/Applications/*.app" -type d | head -1)
           if [ -z "$APP_PATH" ]; then

@@ -9,6 +9,8 @@ on:
       - completed
     branches:
       - main
+    conclusion:
+    - failure
 
 permissions:
   contents: read
